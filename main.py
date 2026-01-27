@@ -11,19 +11,19 @@ API_HASH = os.environ.get("api_hash", "d4fabc00b0345cd3f0ccdc0c9b750f6e")
 BOT_TOKEN = os.environ.get("bot_token", "")
 FORCE_SUB = os.environ.get("FORCE_SUB", "SGBACKUP") 
 ADMIN_ID = int(os.environ.get("ADMIN_ID", "919169586")) 
-# আপনার দেওয়া লগ চ্যানেল আইডি এখানে অ্যাড করা হয়েছে
 LOG_CHANNEL = int(os.environ.get("LOG_CHANNEL", "-1001994332079"))
 
 app = Client("AutoCaptionBot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
 
 # --- UTILS ---
 def clean_filename(name):
-    # অপ্রয়োজনীয় ইউজারনেম, লিঙ্ক এবং ব্র্যাকেট মুছে ফেলে
+    """অপ্রয়োজনীয় ইউজারনেম, লিঙ্ক এবং ব্র্যাকেট মুছে ফেলে"""
     name = re.sub(r'@\w+|http\S+|\.com|\.me|\.in|www\S+|\[.*?\]|\(.*?\)', '', name)
     name = name.replace("_", " ").replace(".", " ").strip()
     return " ".join(name.split())
 
 def get_file_info(update):
+    """ফাইলের নাম থেকে মেটাডেটা এবং নির্দিষ্ট সিজন/এপিসোড ফরম্যাট বের করে"""
     obj = update.video or update.document or update.audio
     if not obj: return None
 
@@ -34,10 +34,26 @@ def get_file_info(update):
     size = f"{round(obj.file_size / (1024 * 1024), 2)} MB"
     year_match = re.search(r'(19|20)\d{2}', raw_name)
     
-    # এপিসোড, সিজন এবং কম্বাইন্ড ডিটেকশন
+    # নির্দিষ্ট ফরম্যাট ডিটেকশন (S01E02 বা Season 1 Episode 1)
+    ep_info = None
+    ss_info = None
+    
+    # ১. S01E02 ফরম্যাট চেক
+    s_e_match = re.search(r'[Ss](\d+)[Ee](\d+)', raw_name)
+    if s_e_match:
+        ss_info = s_e_match.group(1)
+        ep_info = s_e_match.group(2)
+    else:
+        # ২. Season 1 Episode 1 ফরম্যাট চেক
+        full_match = re.search(r'Season\s?(\d+)\s?Episode\s?(\d+)', raw_name, re.IGNORECASE)
+        if full_match:
+            ss_info = full_match.group(1)
+            ep_info = full_match.group(2)
+
+    # Combined ডিটেকশন
     is_combined = "COMBINED" in raw_name.upper()
-    ep_match = re.search(r'[Ee][Pp][\s\._\-]?(\d+)', raw_name)
-    ss_match = re.search(r'[Ss][Ee][Aa][Ss][Oo][Nn][\s\._\-]?(\d+)|[Ss](\d+)', raw_name)
+    if is_combined:
+        ep_info = ss_info = "COMBINED"
     
     return {
         "file_name": clean_name,
@@ -45,8 +61,8 @@ def get_file_info(update):
         "size": size,
         "duration": "N/A",
         "format": raw_name.split(".")[-1].upper() if "." in raw_name else "MKV",
-        "ep": "COMBINED" if is_combined else (ep_match.group(1) if ep_match else None),
-        "ss": "COMBINED" if is_combined else (ss_match.group(1) or ss_match.group(2) if ss_match else None),
+        "ep": ep_info,
+        "ss": ss_info,
         "lang": "Hindi-English",
         "year": year_match.group() if year_match else "N/A"
     }
@@ -54,8 +70,14 @@ def get_file_info(update):
 # --- HANDLERS ---
 @app.on_message(filters.private & filters.command("start"))
 async def start_handler(bot, message):
+    """ইউজার সেভ করা এবং নতুন ইউজার জয়েন করলে লগ চ্যানেলে জানানো"""
     if not await db.is_user_exist(message.from_user.id):
         await db.add_user(message.from_user.id)
+        if LOG_CHANNEL:
+            try:
+                await bot.send_message(LOG_CHANNEL, f"👤 **New User Joined!**\n\n**Name:** {message.from_user.mention}\n**ID:** `{message.from_user.id}`")
+            except: pass
+            
     await message.reply_text(
         f"<b>Hello {message.from_user.mention}!</b>\n\nI am a professional Auto Caption Bot. Add me to your channel as admin.",
         reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Channel Updates", url=f"https://t.me/{FORCE_SUB}")]])
@@ -85,17 +107,18 @@ async def broadcast_handler(bot, message):
 
 @app.on_message(filters.channel)
 async def channel_handler(bot, update):
+    """চ্যানেলের ক্যাপশন এডিট করা এবং মুভি হলে সিজন/এপিসোড হাইড করা"""
     info = get_file_info(update)
     if not info: return
 
-    # ডায়নামিক ক্যাপশন বিল্ডার (মুভি হলে এপিসোড/সিজন হাইড হবে)
+    # ডায়নামিক ক্যাপশন বিল্ডার
     caption = f"📁 **File Name:** `{info['file_name']}`\n\n"
     caption += f"📊 **Quality:** {info['quality']}\n"
     caption += f"⚙️ **Size:** {info['size']}\n"
     
-    # মুভি হলে সিজন/এপিসোড থাকবে না, ওয়েব সিরিজ বা কম্বাইন্ড হলে দেখাবে
-    if info['ep'] or info['ss']:
-        caption += f"🎬 **Episode:** {info['ep'] or 'N/A'} | **Season:** {info['ss'] or 'N/A'}\n"
+    # শুধুমাত্র নির্দিষ্ট ফরম্যাট (S01E02/Season 1 Episode 1) বা Combined থাকলে সিজন/এপিসোড দেখাবে
+    if info['ep'] and info['ss']:
+        caption += f"🎬 **Episode:** {info['ep']} | **Season:** {info['ss']}\n"
     
     caption += f"🌐 **Language:** {info['lang']}\n"
     caption += f"📅 **Year:** {info['year']}\n"
@@ -105,13 +128,22 @@ async def channel_handler(bot, update):
 
     try:
         await update.edit_caption(caption, parse_mode=enums.ParseMode.MARKDOWN)
-        # লগ চ্যানেলে মেসেজ ফরোয়ার্ড করা
-        if LOG_CHANNEL:
-            await update.copy(LOG_CHANNEL, caption=caption)
     except FloodWait as e:
         await asyncio.sleep(e.value)
         await update.edit_caption(caption)
     except: pass
 
-print("Bot with LOG Channel & Smart Detection Started!")
-app.run()
+# --- STARTUP LOGIC ---
+async def start_bot():
+    """বট স্টার্ট হলে লগ চ্যানেলে নোটিফিকেশন পাঠানো"""
+    await app.start()
+    if LOG_CHANNEL:
+        try:
+            await app.send_message(LOG_CHANNEL, "🚀 **Auto Caption Bot Started Successfully!**")
+        except: pass
+    print("Bot is Starting...")
+    await pyrogram.idle()
+
+if __name__ == "__main__":
+    app.run(start_bot())
+
