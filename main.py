@@ -1,100 +1,116 @@
-# Don't Remove Credit @VJ_Botz
-# Subscribe YouTube Channel For Amazing Bot @Tech_VJ
-# Ask Doubt on telegram @KingVJ01
+# (c) @SGBACKUP
+import pyrogram, os, asyncio, re, time
+from pyrogram import Client, filters, enums
+from pyrogram.errors import FloodWait, MessageNotModified, UserIsBlocked, InputUserDeactivated
+from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from motor.motor_asyncio import AsyncIOMotorClient
 
-import pyrogram, os, asyncio
+# --- CONFIGURATIONS ---
+API_ID = int(os.environ.get("app_id", "26042863"))
+API_HASH = os.environ.get("api_hash", "d4fabc00b0345cd3f0ccdc0c9b750f6e")
+BOT_TOKEN = os.environ.get("bot_token", "")
+FORCE_SUB = os.environ.get("FORCE_SUB", "SGBACKUP") 
+# আপনার দেওয়া MongoDB URL সরাসরি যুক্ত করা হয়েছে
+MONGO_URL = os.environ.get("MONGO_URL", "mongodb+srv://SGBACKUP:SGBACKUP@cluster0.64jkmog.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0") 
+ADMIN_ID = int(os.environ.get("ADMIN_ID", "919169586")) 
 
-try: app_id = int(os.environ.get("app_id", "26042863"))
-except Exception as app_id: print(f"⚠️ App ID Invalid {app_id}")
-try: api_hash = os.environ.get("api_hash", "d4fabc00b0345cd3f0ccdc0c9b750f6e")
-except Exception as api_id: print(f"⚠️ Api Hash Invalid {api_hash}")
-try: bot_token = os.environ.get("bot_token", "")
-except Exception as bot_token: print(f"⚠️ Bot Token Invalid {bot_token}")
-try: custom_caption = os.environ.get("custom_caption", "`{file_name}`")
-except Exception as custom_caption: print(f"⚠️ Custom Caption Invalid {custom_caption}")
+# Database Setup
+db_client = AsyncIOMotorClient(MONGO_URL)
+db = db_client["AutoCaptionBot"]
+user_db = db["users"]
 
-AutoCaptionBotV1 = pyrogram.Client(
-   name="AutoCaptionBot", api_id=app_id, api_hash=api_hash, bot_token=bot_token)
+app = Client("AutoCaptionBot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
 
-start_message = """
-<b>👋Hello {}</b>
-<b>I am an AutoCaption bot</b>
-<b>All you have to do is add me to your channel and I will show you my power</b>
-<b>@SGBACKUP</b>"""
+# --- CAPTION TEMPLATE ---
+CAPTION_TEXT = """📁 **File Name:** `{file_name}`
 
-about_message = """
-<b>• Name : <a href=https://t.me/SGBACKUP>AutoCaption</a></b>
-<b>• Developer : <a href=https://t.me/SubhajitGhosh0>[SGBACKUP]</a></b>
-<b>• Language : Python3</b>
-<b>• Library : Pyrogram v{version}</b>
-<b>• Updates : <a href=https://t.me/SGBACKUP>Click Here</a></b>
-<b>• Source Code : <a href=https://t.me/SGBACKUP>Click Here</a></b>"""
+📊 **Quality:** {quality}
+⚙️ **Size:** {size}
+🎬 **Episode:** {ep} | **Season:** {ss}
+🌐 **Language:** {lang}
+📅 **Year:** {year}
+⏱️ **Duration:** {duration}
+📦 **Format:** {format}
 
-@AutoCaptionBotV1.on_message(pyrogram.filters.private & pyrogram.filters.command(["start"]))
-def start_command(bot, update):
-  update.reply(start_message.format(update.from_user.mention), reply_markup=start_buttons(bot, update), parse_mode=pyrogram.enums.ParseMode.HTML, disable_web_page_preview=True)
+✅ **Uploaded By: @SGBACKUP**"""
 
-@AutoCaptionBotV1.on_callback_query(pyrogram.filters.regex("start"))
-def strat_callback(bot, update):
-  update.message.edit(start_message.format(update.from_user.mention), reply_markup=start_buttons(bot, update.message), parse_mode=pyrogram.enums.ParseMode.HTML, disable_web_page_preview=True)
+# --- UTILS ---
+async def add_user(user_id):
+    if not await user_db.find_one({"id": user_id}):
+        await user_db.insert_one({"id": user_id})
 
-@AutoCaptionBotV1.on_callback_query(pyrogram.filters.regex("about"))
-def about_callback(bot, update): 
-  bot = bot.get_me()
-  update.message.edit(about_message.format(version=pyrogram.__version__, username=bot.mention), reply_markup=about_buttons(bot, update.message), parse_mode=pyrogram.enums.ParseMode.HTML, disable_web_page_preview=True)
+def clean_filename(name):
+    # অপ্রয়োজনীয় ইউজারনেম, লিঙ্ক এবং ব্র্যাকেট মুছে ফেলার জন্য
+    name = re.sub(r'@\w+|http\S+|\.com|\.me|\.in|www\S+|\[.*?\]|\(.*?\)', '', name)
+    name = name.replace("_", " ").replace(".", " ").strip()
+    return " ".join(name.split())
 
-@AutoCaptionBotV1.on_message(pyrogram.filters.channel)
-def edit_caption(bot, update: pyrogram.types.Message):
-  motech, _ = get_file_details(update)
-  try:
-      try: update.edit(custom_caption.format(file_name=motech.file_name))
-      except pyrogram.errors.FloodWait as FloodWait:
-          asyncio.sleep(FloodWait.value)
-          update.edit(custom_caption.format(file_name=motech.file_name))
-  except pyrogram.errors.MessageNotModified: pass 
+def get_file_info(update):
+    obj = update.video or update.document or update.audio
+    if not obj: return None
+
+    raw_name = getattr(obj, "file_name", "Unknown")
+    clean_name = clean_filename(raw_name)
+
+    # মেটাডেটা ডিটেকশন
+    quality = "480p" if "480p" in raw_name else "720p" if "720p" in raw_name else "1080p" if "1080p" in raw_name else "HD"
+    size = f"{round(obj.file_size / (1024 * 1024), 2)} MB"
+    year_match = re.search(r'(19|20)\d{2}', raw_name)
     
-def get_file_details(update: pyrogram.types.Message):
-  if update.media:
-    for message_type in (
-        "photo",
-        "animation",
-        "audio",
-        "document",
-        "video",
-        "video_note",
-        "voice",
-        # "contact",
-        # "dice",
-        # "poll",
-        # "location",
-        # "venue",
-        "sticker"
-    ):
-        obj = getattr(update, message_type)
-        if obj:
-            return obj, obj.file_id
+    ep_match = re.search(r'[Ee][Pp][\s\._\-]?(\d+)', raw_name)
+    ss_match = re.search(r'[Ss][Ee][Aa][Ss][Oo][Nn][\s\._\-]?(\d+)|[Ss](\d+)', raw_name)
+    
+    return {
+        "file_name": clean_name,
+        "quality": quality,
+        "size": size,
+        "duration": "N/A",
+        "format": raw_name.split(".")[-1].upper() if "." in raw_name else "MKV",
+        "ep": ep_match.group(1) if ep_match else "01",
+        "ss": ss_match.group(1) or ss_match.group(2) if ss_match else "01",
+        "lang": "Hindi-English",
+        "year": year_match.group() if year_match else "N/A"
+    }
 
-def start_buttons(bot, update):
-  bot = bot.get_me()
-  buttons = [[
-   pyrogram.types.InlineKeyboardButton("Updates", url="https://t.me/SGBACKUP"),
-   pyrogram.types.InlineKeyboardButton("About 🤠", callback_data="about")
-   ],[
-   pyrogram.types.InlineKeyboardButton("➕️ Add To Your Channel ➕️", url=f"http://t.me/{bot.username}?startchannel=true")
-   ]]
-  return pyrogram.types.InlineKeyboardMarkup(buttons)
+# --- HANDLERS ---
+@app.on_message(filters.private & filters.command("start"))
+async def start_handler(bot, message):
+    await add_user(message.from_user.id)
+    await message.reply_text(
+        f"<b>👋 Hello {message.from_user.mention}!</b>\n\nI am an Auto Caption Bot. Add me to your channel as admin to edit captions automatically.",
+        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Channel Updates", url=f"https://t.me/{FORCE_SUB}")]])
+    )
 
-def about_buttons(bot, update):
-  buttons = [[
-   pyrogram.types.InlineKeyboardButton("🏠 Back To Home 🏠", callback_data="start")
-   ]]
-  return pyrogram.types.InlineKeyboardMarkup(buttons)
+@app.on_message(filters.private & filters.command("status") & filters.user(ADMIN_ID))
+async def status_handler(bot, message):
+    total = await user_db.count_documents({})
+    await message.reply_text(f"<b>📊 Current Status</b>\n\nTotal Users: <code>{total}</code>")
 
-print("Telegram AutoCaption V1 Bot Start")
-print("Bot Created By https://t.me/SGBACKUP")
+@app.on_message(filters.private & filters.command("broadcast") & filters.user(ADMIN_ID))
+async def broadcast_handler(bot, message):
+    if not message.reply_to_message:
+        return await message.reply_text("<b>Reply to a message to broadcast!</b>")
+    ms = await message.reply_text("<b>Broadcasting...</b>")
+    success, failed = 0, 0
+    async for user in user_db.find({}):
+        try:
+            await message.reply_to_message.copy(user["id"])
+            success += 1
+        except:
+            failed += 1
+        await asyncio.sleep(0.3)
+    await ms.edit(f"<b>✅ Completed!</b>\n\nSuccess: {success}\nFailed: {failed}")
 
-AutoCaptionBotV1.run()
+@app.on_message(filters.channel)
+async def channel_handler(bot, update):
+    info = get_file_info(update)
+    if not info: return
+    try:
+        await update.edit_caption(CAPTION_TEXT.format(**info), parse_mode=enums.ParseMode.MARKDOWN)
+    except FloodWait as e:
+        await asyncio.sleep(e.value)
+        await update.edit_caption(CAPTION_TEXT.format(**info))
+    except: pass
 
-# Don't Remove Credit @VJ_Botz
-# Subscribe YouTube Channel For Amazing Bot @Tech_VJ
-# Ask Doubt on telegram @KingVJ01
+print("Bot is Starting...")
+app.run()
