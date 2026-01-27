@@ -45,29 +45,37 @@ def get_file_info(update):
     raw_name = getattr(obj, "file_name", "Unknown")
     clean_name = clean_filename(raw_name)
 
+    # ল্যাঙ্গুয়েজ ডিটেকশন (শুধুমাত্র যেটি খুঁজে পাবে সেটিই দেখাবে)
+    languages = []
+    lang_map = {
+        "HIN": "Hindi", "ENG": "English", "TAM": "Tamil", "TEL": "Telugu", 
+        "MAL": "Malayalam", "BEN": "Bengali", "KAN": "Kannada", 
+        "JAP": "Japanese", "CHI": "Chinese"
+    }
+    for key, value in lang_map.items():
+        if key in raw_name.upper() or value.upper() in raw_name.upper():
+            languages.append(value)
+
     quality = "1080p" if "1080p" in raw_name else "720p" if "720p" in raw_name else "480p" if "480p" in raw_name else "HD"
     size = f"{round(obj.file_size / (1024 * 1024), 2)} MB"
     year_match = re.search(r'(19|20)\d{2}', raw_name)
     
-    duration = "N/A"
+    duration = None
     if hasattr(obj, "duration") and obj.duration:
         duration = time.strftime('%H:%M:%S', time.gmtime(obj.duration))
     
-    # স্মার্ট সিজন এবং এপিসোড ডিটেকশন
+    # স্মার্ট সিজন এবং এপিসোড ডিটেকশন (যেকোনো সংখ্যা সাপোর্ট করবে)
     ss_info = None
     ep_info = None
     
-    # সিজন ডিটেকশন (S01 বা Season 1)
     s_match = re.search(r'[Ss](\d+)|Season\s?(\d+)', raw_name, re.IGNORECASE)
     if s_match:
         ss_info = s_match.group(1) or s_match.group(2)
     
-    # এপিসোড ডিটেকশন (E01 বা Episode 1)
     e_match = re.search(r'[Ee](\d+)|Episode\s?(\d+)', raw_name, re.IGNORECASE)
     if e_match:
         ep_info = e_match.group(1) or e_match.group(2)
 
-    # COMBINED লজিক আপডেট (সিজন থাকলে সিজনই থাকবে, এপিসোডে COMBINED বসবে)
     if "COMBINED" in raw_name.upper():
         ep_info = "COMBINED"
         if not ss_info:
@@ -76,8 +84,8 @@ def get_file_info(update):
     return {
         "file_name": clean_name, "quality": quality, "size": size,
         "duration": duration, "format": raw_name.split(".")[-1].upper() if "." in raw_name else "MKV",
-        "ep": ep_info, "ss": ss_info, "lang": "Hindi-English",
-        "year": year_match.group() if year_match else "N/A"
+        "ep": ep_info, "ss": ss_info, "lang": languages,
+        "year": year_match.group() if year_match else None
     }
 
 # --- HANDLERS ---
@@ -145,6 +153,7 @@ async def channel_handler(bot, update):
     info = get_file_info(update)
     if not info: return
 
+    # ডায়নামিক ক্যাপশন বিল্ডার (যা তথ্য পাওয়া যাবে না সেই লাইনটি আসবে না)
     caption = f"📁 **File Name:** `{info['file_name']}`\n\n"
     caption += f"📊 **Quality:** {info['quality']}\n"
     caption += f"⚙️ **Size:** {info['size']}\n"
@@ -152,9 +161,15 @@ async def channel_handler(bot, update):
     if info['ep'] or info['ss']:
         caption += f"🎬 **Episode:** {info['ep'] or 'N/A'} | **Season:** {info['ss'] or 'N/A'}\n"
     
-    caption += f"🌐 **Language:** {info['lang']}\n"
-    caption += f"📅 **Year:** {info['year']}\n"
-    caption += f"⏱️ **Duration:** {info['duration']}\n"
+    if info['lang']:
+        caption += f"🌐 **Language:** {'-'.join(info['lang'])}\n"
+    
+    if info['year']:
+        caption += f"📅 **Year:** {info['year']}\n"
+        
+    if info['duration']:
+        caption += f"⏱️ **Duration:** {info['duration']}\n"
+    
     caption += f"📦 **Format:** {info['format']}\n\n"
     caption += f"✅ **Uploaded By: @SGBACKUP**"
 
