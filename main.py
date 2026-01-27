@@ -1,7 +1,7 @@
 # (c) @SGBACKUP
 import pyrogram, os, asyncio, re, time
 from pyrogram import Client, filters, enums
-from pyrogram.errors import FloodWait, MessageNotModified, UserIsBlocked, InputUserDeactivated
+from pyrogram.errors import FloodWait, MessageNotModified
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from database import db 
 
@@ -17,13 +17,13 @@ app = Client("AutoCaptionBot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_T
 
 # --- UTILS ---
 def clean_filename(name):
-    """অপ্রয়োজনীয় ইউজারনেম, লিঙ্ক এবং ব্র্যাকেট মুছে ফেলে"""
+    """অপ্রয়োজনীয় ইউজারনেম ও লিঙ্ক মুছে ফেলে"""
     name = re.sub(r'@\w+|http\S+|\.com|\.me|\.in|www\S+|\[.*?\]|\(.*?\)', '', name)
     name = name.replace("_", " ").replace(".", " ").strip()
     return " ".join(name.split())
 
 def get_file_info(update):
-    """ফাইলের নাম থেকে মেটাডেটা এবং নির্দিষ্ট সিজন/এপিসোড ফরম্যাট বের করে"""
+    """ফাইলের মেটাডেটা, সিজন এবং অরিজিনাল ডিউরেশন বের করে"""
     obj = update.video or update.document or update.audio
     if not obj: return None
 
@@ -34,91 +34,90 @@ def get_file_info(update):
     size = f"{round(obj.file_size / (1024 * 1024), 2)} MB"
     year_match = re.search(r'(19|20)\d{2}', raw_name)
     
-    # নির্দিষ্ট ফরম্যাট ডিটেকশন (S01E02 বা Season 1 Episode 1)
-    ep_info = None
+    # ভিডিও ফাইল থেকে ডিউরেশন বের করা
+    duration = "N/A"
+    if hasattr(obj, "duration") and obj.duration:
+        duration = time.strftime('%H:%M:%S', time.gmtime(obj.duration))
+    
+    # স্মার্ট সিজন এবং এপিসোড ডিটেকশন
     ss_info = None
+    ep_info = None
     
-    # ১. S01E02 ফরম্যাট চেক
-    s_e_match = re.search(r'[Ss](\d+)[Ee](\d+)', raw_name)
-    if s_e_match:
-        ss_info = s_e_match.group(1)
-        ep_info = s_e_match.group(2)
-    else:
-        # ২. Season 1 Episode 1 ফরম্যাট চেক
-        full_match = re.search(r'Season\s?(\d+)\s?Episode\s?(\d+)', raw_name, re.IGNORECASE)
-        if full_match:
-            ss_info = full_match.group(1)
-            ep_info = full_match.group(2)
+    # সিজন ডিটেকশন (S01 বা Season 1)
+    s_match = re.search(r'[Ss](\d+)|Season\s?(\d+)', raw_name, re.IGNORECASE)
+    if s_match:
+        ss_info = s_match.group(1) or s_match.group(2)
+    
+    # এপিসোড ডিটেকশন (E01 বা Episode 1)
+    e_match = re.search(r'[Ee](\d+)|Episode\s?(\d+)', raw_name, re.IGNORECASE)
+    if e_match:
+        ep_info = e_match.group(1) or e_match.group(2)
 
-    # Combined ডিটেকশন
-    is_combined = "COMBINED" in raw_name.upper()
-    if is_combined:
-        ep_info = ss_info = "COMBINED"
-    
+    # COMBINED লজিক আপডেট
+    if "COMBINED" in raw_name.upper():
+        ep_info = "COMBINED"
+        # যদি সিজন না পাওয়া যায় তবে ডিফল্ট হিসেবে '01' অথবা 'N/A' দেওয়া যেতে পারে
+        if not ss_info:
+            ss_info = "01" 
+
     return {
-        "file_name": clean_name,
-        "quality": quality,
-        "size": size,
-        "duration": "N/A",
-        "format": raw_name.split(".")[-1].upper() if "." in raw_name else "MKV",
-        "ep": ep_info,
-        "ss": ss_info,
-        "lang": "Hindi-English",
+        "file_name": clean_name, "quality": quality, "size": size,
+        "duration": duration, "format": raw_name.split(".")[-1].upper() if "." in raw_name else "MKV",
+        "ep": ep_info, "ss": ss_info, "lang": "Hindi-English",
         "year": year_match.group() if year_match else "N/A"
     }
 
 # --- HANDLERS ---
+@app.on_chat_member_updated()
+async def channel_join_log(bot, update):
+    """বট কোনো চ্যানেলে অ্যাড হলে লগ চ্যানেলে ডিটেইলস পাঠানো"""
+    if update.new_chat_member and update.new_chat_member.status in [enums.ChatMemberStatus.ADMINISTRATOR, enums.ChatMemberStatus.MEMBER]:
+        # চেক করা হচ্ছে এটি কি এই বটের আইডি কি না
+        me = await bot.get_me()
+        if update.new_chat_member.user.id == me.id:
+            chat = update.chat
+            count = await bot.get_chat_members_count(chat.id)
+            
+            # ইনভাইট লিঙ্ক বের করার চেষ্টা
+            invite = "No Link Available"
+            try:
+                invite = await bot.export_chat_invite_link(chat.id)
+            except: pass
+
+            log_msg = (
+                f"📡 **Added to New Channel!**\n\n"
+                f"**Name:** `{chat.title}`\n"
+                f"**ID:** `{chat.id}`\n"
+                f"**Members:** `{count}`\n"
+                f"**Link:** {invite}"
+            )
+            if LOG_CHANNEL:
+                await bot.send_message(LOG_CHANNEL, log_msg)
+
 @app.on_message(filters.private & filters.command("start"))
 async def start_handler(bot, message):
-    """ইউজার সেভ করা এবং নতুন ইউজার জয়েন করলে লগ চ্যানেলে জানানো"""
     if not await db.is_user_exist(message.from_user.id):
         await db.add_user(message.from_user.id)
         if LOG_CHANNEL:
-            try:
-                await bot.send_message(LOG_CHANNEL, f"👤 **New User Joined!**\n\n**Name:** {message.from_user.mention}\n**ID:** `{message.from_user.id}`")
-            except: pass
+            await bot.send_message(LOG_CHANNEL, f"👤 **New User Joined!**\n**Name:** {message.from_user.mention}\n**ID:** `{message.from_user.id}`")
             
     await message.reply_text(
-        f"<b>Hello {message.from_user.mention}!</b>\n\nI am a professional Auto Caption Bot. Add me to your channel as admin.",
-        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Channel Updates", url=f"https://t.me/{FORCE_SUB}")]])
+        f"<b>Hello {message.from_user.mention}!</b>\n\nI am ready. Add me to your channel.",
+        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Updates", url=f"https://t.me/{FORCE_SUB}")]])
     )
-
-@app.on_message(filters.private & filters.command("status") & filters.user(ADMIN_ID))
-async def status_handler(bot, message):
-    total = await db.total_users_count()
-    await message.reply_text(f"<b>📊 Current Status</b>\n\nTotal Users in DB: <code>{total}</code>")
-
-@app.on_message(filters.private & filters.command("broadcast") & filters.user(ADMIN_ID))
-async def broadcast_handler(bot, message):
-    if not message.reply_to_message:
-        return await message.reply_text("<b>Reply to a message to broadcast!</b>")
-    ms = await message.reply_text("<b>Broadcasting...</b>")
-    all_users = await db.get_all_users()
-    success, failed = 0, 0
-    async for user in all_users:
-        try:
-            await message.reply_to_message.copy(user['id'])
-            success += 1
-        except:
-            await db.delete_user(user['id'])
-            failed += 1
-        await asyncio.sleep(0.3)
-    await ms.edit(f"<b>✅ Completed!</b>\n\nSuccess: {success}\nFailed: {failed}")
 
 @app.on_message(filters.channel)
 async def channel_handler(bot, update):
-    """চ্যানেলের ক্যাপশন এডিট করা এবং মুভি হলে সিজন/এপিসোড হাইড করা"""
     info = get_file_info(update)
     if not info: return
 
-    # ডায়নামিক ক্যাপশন বিল্ডার
     caption = f"📁 **File Name:** `{info['file_name']}`\n\n"
     caption += f"📊 **Quality:** {info['quality']}\n"
     caption += f"⚙️ **Size:** {info['size']}\n"
     
-    # শুধুমাত্র নির্দিষ্ট ফরম্যাট (S01E02/Season 1 Episode 1) বা Combined থাকলে সিজন/এপিসোড দেখাবে
-    if info['ep'] and info['ss']:
-        caption += f"🎬 **Episode:** {info['ep']} | **Season:** {info['ss']}\n"
+    # সিজন এবং এপিসোড থাকলে লাইনটি দেখাবে
+    if info['ep'] or info['ss']:
+        caption += f"🎬 **Episode:** {info['ep'] or 'N/A'} | **Season:** {info['ss'] or 'N/A'}\n"
     
     caption += f"🌐 **Language:** {info['lang']}\n"
     caption += f"📅 **Year:** {info['year']}\n"
@@ -133,17 +132,29 @@ async def channel_handler(bot, update):
         await update.edit_caption(caption)
     except: pass
 
+# --- BROADCAST & STATUS (আগের কমান্ডগুলো এখানে থাকবে) ---
+@app.on_message(filters.private & filters.command("status") & filters.user(ADMIN_ID))
+async def status_handler(bot, message):
+    total = await db.total_users_count()
+    await message.reply_text(f"<b>📊 Current Status:</b> <code>{total} Users</code>")
+
+@app.on_message(filters.private & filters.command("broadcast") & filters.user(ADMIN_ID))
+async def broadcast_handler(bot, message):
+    if not message.reply_to_message: return
+    ms = await message.reply_text("Broadcasting...")
+    all_users = await db.get_all_users()
+    async for user in all_users:
+        try: await message.reply_to_message.copy(user['id'])
+        except: pass
+    await ms.edit("✅ Broadcast Completed!")
+
 # --- STARTUP LOGIC ---
 async def start_bot():
-    """বট স্টার্ট হলে লগ চ্যানেলে নোটিফিকেশন পাঠানো"""
     await app.start()
     if LOG_CHANNEL:
-        try:
-            await app.send_message(LOG_CHANNEL, "🚀 **Auto Caption Bot Started Successfully!**")
+        try: await app.send_message(LOG_CHANNEL, "🚀 **Auto Caption Bot Started!**")
         except: pass
-    print("Bot is Starting...")
     await pyrogram.idle()
 
 if __name__ == "__main__":
     app.run(start_bot())
-
