@@ -1,7 +1,7 @@
 # (c) @SGBACKUP
 import pyrogram, os, asyncio, re, time
 from pyrogram import Client, filters, enums
-from pyrogram.errors import FloodWait, MessageNotModified
+from pyrogram.errors import FloodWait, UserNotParticipant
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from database import db 
 
@@ -12,10 +12,25 @@ BOT_TOKEN = os.environ.get("bot_token", "")
 FORCE_SUB = os.environ.get("FORCE_SUB", "SGBACKUP") 
 ADMIN_ID = int(os.environ.get("ADMIN_ID", "919169586")) 
 LOG_CHANNEL = int(os.environ.get("LOG_CHANNEL", "-1001994332079"))
+OWNER_LINK = "https://t.me/SubhajitGhosh0"
 
 app = Client("AutoCaptionBot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
 
 # --- UTILS ---
+async def is_subscribed(bot, message):
+    """ইউজার চ্যানেলে জয়েন আছে কি না চেক করার জন্য"""
+    if not FORCE_SUB:
+        return True
+    try:
+        user = await bot.get_chat_member(FORCE_SUB, message.from_user.id)
+        if user.status == enums.ChatMemberStatus.BANNED:
+            return False
+        return True
+    except UserNotParticipant:
+        return False
+    except Exception:
+        return True
+
 def clean_filename(name):
     """অপ্রয়োজনীয় ইউজারনেম ও লিঙ্ক মুছে ফেলে"""
     name = re.sub(r'@\w+|http\S+|\.com|\.me|\.in|www\S+|\[.*?\]|\(.*?\)', '', name)
@@ -34,7 +49,6 @@ def get_file_info(update):
     size = f"{round(obj.file_size / (1024 * 1024), 2)} MB"
     year_match = re.search(r'(19|20)\d{2}', raw_name)
     
-    # ভিডিও ফাইল থেকে ডিউরেশন বের করা
     duration = "N/A"
     if hasattr(obj, "duration") and obj.duration:
         duration = time.strftime('%H:%M:%S', time.gmtime(obj.duration))
@@ -53,10 +67,9 @@ def get_file_info(update):
     if e_match:
         ep_info = e_match.group(1) or e_match.group(2)
 
-    # COMBINED লজিক আপডেট
+    # COMBINED লজিক আপডেট (সিজন থাকলে সিজনই থাকবে, এপিসোডে COMBINED বসবে)
     if "COMBINED" in raw_name.upper():
         ep_info = "COMBINED"
-        # যদি সিজন না পাওয়া যায় তবে ডিফল্ট হিসেবে '01' অথবা 'N/A' দেওয়া যেতে পারে
         if not ss_info:
             ss_info = "01" 
 
@@ -68,17 +81,15 @@ def get_file_info(update):
     }
 
 # --- HANDLERS ---
+
 @app.on_chat_member_updated()
 async def channel_join_log(bot, update):
     """বট কোনো চ্যানেলে অ্যাড হলে লগ চ্যানেলে ডিটেইলস পাঠানো"""
     if update.new_chat_member and update.new_chat_member.status in [enums.ChatMemberStatus.ADMINISTRATOR, enums.ChatMemberStatus.MEMBER]:
-        # চেক করা হচ্ছে এটি কি এই বটের আইডি কি না
         me = await bot.get_me()
         if update.new_chat_member.user.id == me.id:
             chat = update.chat
             count = await bot.get_chat_members_count(chat.id)
-            
-            # ইনভাইট লিঙ্ক বের করার চেষ্টা
             invite = "No Link Available"
             try:
                 invite = await bot.export_chat_invite_link(chat.id)
@@ -96,18 +107,41 @@ async def channel_join_log(bot, update):
 
 @app.on_message(filters.private & filters.command("start"))
 async def start_handler(bot, message):
+    """ইউজার সেভ এবং Force Subscribe চেক"""
     if not await db.is_user_exist(message.from_user.id):
         await db.add_user(message.from_user.id)
         if LOG_CHANNEL:
             await bot.send_message(LOG_CHANNEL, f"👤 **New User Joined!**\n**Name:** {message.from_user.mention}\n**ID:** `{message.from_user.id}`")
-            
+    
+    # Force Subscribe চেক
+    if not await is_subscribed(bot, message):
+        buttons = [
+            [InlineKeyboardButton("📢 Join Channel", url=f"https://t.me/{FORCE_SUB}")],
+            [InlineKeyboardButton("🔄 Try Again", url=f"https://t.me/{(await bot.get_me()).username}?start=true")]
+        ]
+        return await message.reply_text(
+            f"<b>👋 Hello {message.from_user.mention}</b>\n\nYou must join our channel to use this bot. After joining, click Try Again.",
+            reply_markup=InlineKeyboardMarkup(buttons)
+        )
+
+    # মেইন মেনু
+    me = await bot.get_me()
+    buttons = [
+        [InlineKeyboardButton("➕ Add Me To Your Channel", url=f"https://t.me/{me.username}?startchannel=true")],
+        [InlineKeyboardButton("👨‍💻 Owner", url=OWNER_LINK)]
+    ]
     await message.reply_text(
-        f"<b>Hello {message.from_user.mention}!</b>\n\nI am ready. Add me to your channel.",
-        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Updates", url=f"https://t.me/{FORCE_SUB}")]])
+        f"<b>👋 Hello {message.from_user.mention}</b>\n\nI am an Ai Auto Caption Bot. Add me to your channel and I will show you my power.",
+        reply_markup=InlineKeyboardMarkup(buttons)
     )
 
 @app.on_message(filters.channel)
 async def channel_handler(bot, update):
+    """চ্যানেলের ক্যাপশন এডিট করা (লগ চ্যানেল বাদে)"""
+    # লগ চ্যানেলের কোনো ফাইল এডিট করবে না
+    if LOG_CHANNEL and update.chat.id == LOG_CHANNEL:
+        return
+
     info = get_file_info(update)
     if not info: return
 
@@ -115,7 +149,6 @@ async def channel_handler(bot, update):
     caption += f"📊 **Quality:** {info['quality']}\n"
     caption += f"⚙️ **Size:** {info['size']}\n"
     
-    # সিজন এবং এপিসোড থাকলে লাইনটি দেখাবে
     if info['ep'] or info['ss']:
         caption += f"🎬 **Episode:** {info['ep'] or 'N/A'} | **Season:** {info['ss'] or 'N/A'}\n"
     
@@ -132,7 +165,6 @@ async def channel_handler(bot, update):
         await update.edit_caption(caption)
     except: pass
 
-# --- BROADCAST & STATUS (আগের কমান্ডগুলো এখানে থাকবে) ---
 @app.on_message(filters.private & filters.command("status") & filters.user(ADMIN_ID))
 async def status_handler(bot, message):
     total = await db.total_users_count()
@@ -148,11 +180,10 @@ async def broadcast_handler(bot, message):
         except: pass
     await ms.edit("✅ Broadcast Completed!")
 
-# --- STARTUP LOGIC ---
 async def start_bot():
     await app.start()
     if LOG_CHANNEL:
-        try: await app.send_message(LOG_CHANNEL, "🚀 **Auto Caption Bot Started!**")
+        try: await app.send_message(LOG_CHANNEL, "🚀 **Auto Caption Bot Started Successfully!**")
         except: pass
     await pyrogram.idle()
 
