@@ -1,11 +1,18 @@
 🚀 Ai Auto Caption Bot - Premium Edition
 
 
+
+
 This is an advanced Telegram Channel Auto-Caption bot designed to organize your files professionally with intelligent AI logic. It automatically extracts metadata from file names and customizes captions instantly for a seamless channel experience.
 
 
+
+
 Developed & Maintained By: https://t.me/SubhajitGhosh0
+
 Official Updates: https://t.me/SGBACKUP
+
+
 
 
 🔥 Premium Features
@@ -23,12 +30,22 @@ Official Updates: https://t.me/SGBACKUP
 📦 Format Identification: Displays the file format (MKV, MP4, etc.) automatically in the caption.
 
 
+
+
 🛠 Available Commands
+
 👤 Public Commands
+
 start - 𝖈ʜᴇᴄᴋ 𝖎 𝖆ᴍ ʟɪᴠᴇ ⚡
+
+
 ⚙️ Admin Only Commands
+
 status - ᴄʜᴇᴄᴋ ʙᴏᴛ ᴛᴏᴛᴀʟ ᴜsᴇʀs 📊
+
 broadcast - sᴇɴᴅ ᴍᴇssᴀɢᴇ ᴛᴏ ᴀʟʟ ᴜsᴇʀs 📢
+
+
 
 
 ⚙️ Configuration Variables
@@ -50,6 +67,7 @@ ADMIN_ID Your personal Telegram User ID.
 
 
 
+
 🚀 Deployment
 
 Build Command: pip3 install -U -r requirements.txt
@@ -58,11 +76,13 @@ Start Command: gunicorn app:app & python3 main.py
 
 
 
+
 🤝 Support & Credits
 
 Lead Developer: https://t.me/SubhajitGhosh0
 
 Official Community: https://t.me/SGBACKUP
+
 
 
 
