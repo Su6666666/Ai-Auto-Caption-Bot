@@ -7,12 +7,19 @@ Official Updates: https://t.me/SGBACKUP
 
 
 🔥 Premium Features
+
 ✅ Smart Season/Episode Detection: Automatically detects large numbers and specific formats like S15 or E100.
+
 🌐 Dynamic Language Filter: Identifies languages such as Bengali (BEN), Kannada (KAN), Hindi (HIN), etc. If a language is not mentioned in the file name, the line is automatically removed from the caption.
+
 ⏱️ Metadata Extraction: Automatically extracts Duration, Quality, and Year from video files for a detailed overview.
+
 📢 Force Subscribe: Boosts your channel growth by requiring users to join your specified channel before using the bot.
+
 🛡️ Log Protection: Ensures your private log channel activities remain untouched and secure.
+
 📦 Format Identification: Displays the file format (MKV, MP4, etc.) automatically in the caption.
+
 
 
 🛠 Available Commands
