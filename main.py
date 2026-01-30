@@ -74,7 +74,7 @@ def get_file_info(update):
     if hasattr(obj, "duration") and obj.duration:
         duration = time.strftime('%H:%M:%S', time.gmtime(obj.duration))
     
-    # স্মার্ট সিজন এবং এপিসোড ডিটেকশন (Season 1, Episode 1 ইত্যাদি সাপোর্ট করবে)
+    # স্মার্ট সিজন এবং এপিসোড ডিটেকশন
     ss_info = None
     ep_info = None
     
@@ -102,7 +102,6 @@ def get_file_info(update):
 
 @app.on_chat_member_updated()
 async def channel_join_log(bot, update):
-    """বট কোনো চ্যানেলে অ্যাড হলে লগ চ্যানেলে ডিটেইলস পাঠানো"""
     if update.new_chat_member and update.new_chat_member.status in [enums.ChatMemberStatus.ADMINISTRATOR, enums.ChatMemberStatus.MEMBER]:
         me = await bot.get_me()
         if update.new_chat_member.user.id == me.id:
@@ -125,44 +124,39 @@ async def channel_join_log(bot, update):
 
 @app.on_message(filters.private & filters.command("start"))
 async def start_handler(bot, message):
-    """ইউজার সেভ এবং Force Subscribe চেক"""
     if not await db.is_user_exist(message.from_user.id):
         await db.add_user(message.from_user.id)
         if LOG_CHANNEL:
             await bot.send_message(LOG_CHANNEL, f"👤 **New User Joined!**\n**Name:** {message.from_user.mention}\n**ID:** `{message.from_user.id}`")
     
-    # Force Subscribe চেক
     if not await is_subscribed(bot, message):
         buttons = [
             [InlineKeyboardButton("📢 Join Channel", url=f"https://t.me/{FORCE_SUB}")],
             [InlineKeyboardButton("🔄 Try Again", url=f"https://t.me/{(await bot.get_me()).username}?start=true")]
         ]
         return await message.reply_text(
-            f"<b>👋 Hello {message.from_user.mention}</b>\n\nYou must join our channel to use this bot. After joining, click Try Again.",
+            f"<b>👋 Hello {message.from_user.mention}</b>\n\nYou must join our channel to use this bot.",
             reply_markup=InlineKeyboardMarkup(buttons)
         )
 
-    # মেইন মেনু
     me = await bot.get_me()
     buttons = [
         [InlineKeyboardButton("➕ Add Me To Your Channel", url=f"https://t.me/{me.username}?startchannel=true")],
         [InlineKeyboardButton("👨‍💻 Owner", url=OWNER_LINK)]
     ]
     await message.reply_text(
-        f"<b>👋 Hello {message.from_user.mention}</b>\n\nI am an Ai Auto Caption Bot. Add me to your channel and I will show you my power.",
+        f"<b>👋 Hello {message.from_user.mention}</b>\n\nI am an Ai Auto Caption Bot.",
         reply_markup=InlineKeyboardMarkup(buttons)
     )
 
 @app.on_message(filters.channel)
 async def channel_handler(bot, update):
-    """চ্যানেলের ক্যাপশন এডিট করা (লগ চ্যানেল বাদে)"""
     if LOG_CHANNEL and update.chat.id == LOG_CHANNEL:
         return
 
     info = get_file_info(update)
     if not info: return
 
-    # ডায়নামিক ক্যাপশন বিল্ডার
     caption = f"📁 **File Name:** `{info['file_name']}`\n\n"
     caption += f"📊 **Quality:** {info['quality']}\n"
     caption += f"⚙️ **Size:** {info['size']}\n"
@@ -173,6 +167,7 @@ async def channel_handler(bot, update):
     if info['lang']:
         caption += f"🌐 **Language:** {'-'.join(info['lang'])}\n"
 
+    # নতুন সাবটাইটেল ফিচার (যা পাওয়া যাবে না, সেই লাইনটি আসবে না)
     if info['sub']:
         caption += f"📜 **Subtitle:** {'-'.join(info['sub'])}\n"
     
@@ -195,7 +190,7 @@ async def channel_handler(bot, update):
 @app.on_message(filters.private & filters.command("status") & filters.user(ADMIN_ID))
 async def status_handler(bot, message):
     total = await db.total_users_count()
-    await message.reply_text(f"<b>📊 Current Status:</b> <code>{total} Users</code>")
+    await message.reply_text(f"📊 <b>Current Status:</b> <code>{total} Users</code>")
 
 @app.on_message(filters.private & filters.command("broadcast") & filters.user(ADMIN_ID))
 async def broadcast_handler(bot, message):
