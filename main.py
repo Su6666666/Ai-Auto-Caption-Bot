@@ -50,7 +50,8 @@ def get_file_info(update):
     lang_map = {
         "HIN": "Hindi", "ENG": "English", "TAM": "Tamil", "TEL": "Telugu", 
         "MAL": "Malayalam", "BEN": "Bengali", "KAN": "Kannada", 
-        "JAP": "Japanese", "CHI": "Chinese"
+        "JAP": "Japanese", "CHI": "Chinese", "KOR": "Korean",
+        "SPA": "Spanish", "FRE": "French", "GER": "German", "MAR": "Marathi", "GUJ": "Gujarati", "PUN": "Punjabi"
     }
     for key, value in lang_map.items():
         if key in raw_name.upper() or value.upper() in raw_name.upper():
@@ -58,11 +59,22 @@ def get_file_info(update):
 
     quality = "1080p" if "1080p" in raw_name else "720p" if "720p" in raw_name else "480p" if "480p" in raw_name else "HD"
     size = f"{round(obj.file_size / (1024 * 1024), 2)} MB"
+    if obj.file_size > (1024**3):
+        size = f"{round(obj.file_size / (1024**3), 2)} GB"
     year_match = re.search(r'(19|20)\d{2}', raw_name)
     
     duration = None
     if hasattr(obj, "duration") and obj.duration:
         duration = time.strftime('%H:%M:%S', time.gmtime(obj.duration))
+
+    # সাবটাইটেল ডিটেকশন
+    subtitles = []
+    if re.search(r'ESUB|ENGLISH-SUB', raw_name, re.IGNORECASE):
+        subtitles.append("English")
+    if re.search(r'HSUB|HINDI-SUB', raw_name, re.IGNORECASE):
+        subtitles.append("Hindi")
+    if re.search(r'MSUB|M-SUB', raw_name, re.IGNORECASE):
+        subtitles.append("Multi Sub")
     
     # স্মার্ট সিজন এবং এপিসোড ডিটেকশন (যেকোনো সংখ্যা সাপোর্ট করবে)
     ss_info = None
@@ -163,6 +175,9 @@ async def channel_handler(bot, update):
     
     if info['lang']:
         caption += f"🌐 **Language:** {'-'.join(info['lang'])}\n"
+        
+    if info['subs'] != "None":
+        caption += f"📝 **Subtitle:** `{info['subs']}`\n"
     
     if info['year']:
         caption += f"📅 **Year:** {info['year']}\n"
