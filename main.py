@@ -38,14 +38,14 @@ def clean_filename(name):
     return " ".join(name.split())
 
 def get_file_info(update):
-    """ফাইলের মেটাডেটা, সিজন, এপিসোড এবং সাবটাইটেল বের করে"""
+    """ফাইলের মেটাডেটা, সিজন এবং অরিজিনাল ডিউরেশন বের করে"""
     obj = update.video or update.document or update.audio
     if not obj: return None
 
     raw_name = getattr(obj, "file_name", "Unknown")
     clean_name = clean_filename(raw_name)
 
-    # ল্যাঙ্গুয়েজ ডিটেকশন
+    # ল্যাঙ্গুয়েজ ডিটেকশন (শুধুমাত্র যেটি খুঁজে পাবে সেটিই দেখাবে)
     languages = []
     lang_map = {
         "HIN": "Hindi", "ENG": "English", "TAM": "Tamil", "TEL": "Telugu", 
@@ -56,16 +56,6 @@ def get_file_info(update):
         if key in raw_name.upper() or value.upper() in raw_name.upper():
             languages.append(value)
 
-    # সাবটাইটেল ডিটেকশন (ESUB, HSUB, JSUB, CSUB, BSUB)
-    subtitles = []
-    sub_map = {
-        "ESUB": "English", "HSUB": "Hindi", "JSUB": "Japanese", 
-        "CSUB": "Chinese", "BSUB": "Bengali", "SUB": "Available"
-    }
-    for key, value in sub_map.items():
-        if key in raw_name.upper():
-            subtitles.append(value)
-
     quality = "1080p" if "1080p" in raw_name else "720p" if "720p" in raw_name else "480p" if "480p" in raw_name else "HD"
     size = f"{round(obj.file_size / (1024 * 1024), 2)} MB"
     year_match = re.search(r'(19|20)\d{2}', raw_name)
@@ -74,7 +64,7 @@ def get_file_info(update):
     if hasattr(obj, "duration") and obj.duration:
         duration = time.strftime('%H:%M:%S', time.gmtime(obj.duration))
     
-    # স্মার্ট সিজন এবং এপিসোড ডিটেকশন
+    # স্মার্ট সিজন এবং এপিসোড ডিটেকশন (যেকোনো সংখ্যা সাপোর্ট করবে)
     ss_info = None
     ep_info = None
     
@@ -94,7 +84,7 @@ def get_file_info(update):
     return {
         "file_name": clean_name, "quality": quality, "size": size,
         "duration": duration, "format": raw_name.split(".")[-1].upper() if "." in raw_name else "MKV",
-        "ep": ep_info, "ss": ss_info, "lang": languages, "sub": subtitles,
+        "ep": ep_info, "ss": ss_info, "lang": languages,
         "year": year_match.group() if year_match else None
     }
 
@@ -102,6 +92,7 @@ def get_file_info(update):
 
 @app.on_chat_member_updated()
 async def channel_join_log(bot, update):
+    """বট কোনো চ্যানেলে অ্যাড হলে লগ চ্যানেলে ডিটেইলস পাঠানো"""
     if update.new_chat_member and update.new_chat_member.status in [enums.ChatMemberStatus.ADMINISTRATOR, enums.ChatMemberStatus.MEMBER]:
         me = await bot.get_me()
         if update.new_chat_member.user.id == me.id:
@@ -124,39 +115,45 @@ async def channel_join_log(bot, update):
 
 @app.on_message(filters.private & filters.command("start"))
 async def start_handler(bot, message):
+    """ইউজার সেভ এবং Force Subscribe চেক"""
     if not await db.is_user_exist(message.from_user.id):
         await db.add_user(message.from_user.id)
         if LOG_CHANNEL:
             await bot.send_message(LOG_CHANNEL, f"👤 **New User Joined!**\n**Name:** {message.from_user.mention}\n**ID:** `{message.from_user.id}`")
     
+    # Force Subscribe চেক
     if not await is_subscribed(bot, message):
         buttons = [
             [InlineKeyboardButton("📢 Join Channel", url=f"https://t.me/{FORCE_SUB}")],
             [InlineKeyboardButton("🔄 Try Again", url=f"https://t.me/{(await bot.get_me()).username}?start=true")]
         ]
         return await message.reply_text(
-            f"<b>👋 Hello {message.from_user.mention}</b>\n\nYou must join our channel to use this bot.",
+            f"<b>👋 Hello {message.from_user.mention}</b>\n\nYou must join our channel to use this bot. After joining, click Try Again.",
             reply_markup=InlineKeyboardMarkup(buttons)
         )
 
+    # মেইন মেনু
     me = await bot.get_me()
     buttons = [
         [InlineKeyboardButton("➕ Add Me To Your Channel", url=f"https://t.me/{me.username}?startchannel=true")],
         [InlineKeyboardButton("👨‍💻 Owner", url=OWNER_LINK)]
     ]
     await message.reply_text(
-        f"<b>👋 Hello {message.from_user.mention}</b>\n\nI am an Ai Auto Caption Bot.",
+        f"<b>👋 Hello {message.from_user.mention}</b>\n\nI am an Ai Auto Caption Bot. Add me to your channel and I will show you my power.",
         reply_markup=InlineKeyboardMarkup(buttons)
     )
 
 @app.on_message(filters.channel)
 async def channel_handler(bot, update):
+    """চ্যানেলের ক্যাপশন এডিট করা (লগ চ্যানেল বাদে)"""
+    # লগ চ্যানেলের কোনো ফাইল এডিট করবে না
     if LOG_CHANNEL and update.chat.id == LOG_CHANNEL:
         return
 
     info = get_file_info(update)
     if not info: return
 
+    # ডায়নামিক ক্যাপশন বিল্ডার (যা তথ্য পাওয়া যাবে না সেই লাইনটি আসবে না)
     caption = f"📁 **File Name:** `{info['file_name']}`\n\n"
     caption += f"📊 **Quality:** {info['quality']}\n"
     caption += f"⚙️ **Size:** {info['size']}\n"
@@ -166,10 +163,6 @@ async def channel_handler(bot, update):
     
     if info['lang']:
         caption += f"🌐 **Language:** {'-'.join(info['lang'])}\n"
-
-    # নতুন সাবটাইটেল ফিচার (যা পাওয়া যাবে না, সেই লাইনটি আসবে না)
-    if info['sub']:
-        caption += f"📜 **Subtitle:** {'-'.join(info['sub'])}\n"
     
     if info['year']:
         caption += f"📅 **Year:** {info['year']}\n"
@@ -190,7 +183,7 @@ async def channel_handler(bot, update):
 @app.on_message(filters.private & filters.command("status") & filters.user(ADMIN_ID))
 async def status_handler(bot, message):
     total = await db.total_users_count()
-    await message.reply_text(f"📊 <b>Current Status:</b> <code>{total} Users</code>")
+    await message.reply_text(f"<b>📊 Current Status:</b> <code>{total} Users</code>")
 
 @app.on_message(filters.private & filters.command("broadcast") & filters.user(ADMIN_ID))
 async def broadcast_handler(bot, message):
