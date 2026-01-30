@@ -45,38 +45,58 @@ def get_file_info(update):
     raw_name = getattr(obj, "file_name", "Unknown")
     clean_name = clean_filename(raw_name)
 
-    # ল্যাঙ্গুয়েজ ডিটেকশন (শুধুমাত্র যেটি খুঁজে পাবে সেটিই দেখাবে)
+    # ল্যাঙ্গুয়েজ ডিটেকশন (২৫+ পপুলার ল্যাঙ্গুয়েজ)
     languages = []
     lang_map = {
         "HIN": "Hindi", "ENG": "English", "TAM": "Tamil", "TEL": "Telugu", 
-        "MAL": "Malayalam", "BEN": "Bengali", "KAN": "Kannada", 
-        "JAP": "Japanese", "CHI": "Chinese", "KOR": "Korean",
-        "SPA": "Spanish", "FRE": "French", "GER": "German", "MAR": "Marathi", "GUJ": "Gujarati", "PUN": "Punjabi"
+        "MAL": "Malayalam", "BEN": "Bengali", "KAN": "Kannada", "GUJ": "Gujarati",
+        "MAR": "Marathi", "PUN": "Punjabi", "ORI": "Odia", "BHO": "Bhojpuri",
+        "ASS": "Assamese", "URD": "Urdu", "SPA": "Spanish", "FRE": "French",
+        "GER": "German", "KOR": "Korean", "JAP": "Japanese", "CHI": "Chinese",
+        "RUS": "Russian", "ITA": "Italian", "POR": "Portuguese", "TUR": "Turkish",
+        "ARA": "Arabic", "THA": "Thai", "VIET": "Vietnamese"
     }
     for key, value in lang_map.items():
         if key in raw_name.upper() or value.upper() in raw_name.upper():
             languages.append(value)
 
+    # সাবটাইটেল ডিটেকশন (ESub, HSub, MultiSub প্যাটার্ন)
+    subtitles = []
+    
+    # English Subtitle Patterns
+    esub_patterns = ["ESUB", "E-SUB", "E_SUB", "ENGSUB", "ENG-SUB", "ENG_SUB", "EN-SUB", "EN_SUB", "ENGLISH", "EN-CC", "ENG-CC", "CC-ENGLISH"]
+    if any(p in raw_name.upper() for p in esub_patterns):
+        subtitles.append("English")
+        
+    # Hindi Subtitle Patterns
+    hsub_patterns = ["HSUB", "H-SUB", "H_SUB", "HINSUB", "HIN-SUB", "HIN_SUB", "HINDISUB", "HI-SUB", "HI_SUB", "HI-CC", "HIN-CC", "CC-HINDI"]
+    if any(p in raw_name.upper() for p in hsub_patterns):
+        subtitles.append("Hindi")
+        
+    # Multi Subtitle Patterns
+    multi_patterns = ["DUALSUB", "DUAL-SUB", "DUAL_SUB", "MULTISUB", "MULTI-SUB", "MULTI_SUB"]
+    if any(p in raw_name.upper() for p in multi_patterns):
+        subtitles.append("Multi")
+
+    # Fallback: অন্য কোনো সাবটাইটেল থাকলে 'Available' দেখাবে
+    if not subtitles and ("SUB" in raw_name.upper() or "CC" in raw_name.upper()):
+        subtitles.append("Available")
+
     quality = "1080p" if "1080p" in raw_name else "720p" if "720p" in raw_name else "480p" if "480p" in raw_name else "HD"
-    size = f"{round(obj.file_size / (1024 * 1024), 2)} MB"
-    if obj.file_size > (1024**3):
-        size = f"{round(obj.file_size / (1024**3), 2)} GB"
+    
+    # ফাইল সাইজ কনভার্টার (MB থেকে GB যদি ১০০০ MB এর বেশি হয়)
+    size_mb = obj.file_size / (1024 * 1024)
+    if size_mb >= 1000:
+        size = f"{round(size_mb / 1024, 2)} GB"
+    else:
+        size = f"{round(size_mb, 2)} MB"
+        
     year_match = re.search(r'(19|20)\d{2}', raw_name)
     
     duration = None
     if hasattr(obj, "duration") and obj.duration:
         duration = time.strftime('%H:%M:%S', time.gmtime(obj.duration))
-
-    # সাবটাইটেল ডিটেকশন
-    subtitles = []
-    if re.search(r'ESUB|ENGLISH-SUB', raw_name, re.IGNORECASE):
-        subtitles.append("English")
-    if re.search(r'HSUB|HINDI-SUB', raw_name, re.IGNORECASE):
-        subtitles.append("Hindi")
-    if re.search(r'MSUB|M-SUB', raw_name, re.IGNORECASE):
-        subtitles.append("Multi Sub")
     
-    # স্মার্ট সিজন এবং এপিসোড ডিটেকশন (যেকোনো সংখ্যা সাপোর্ট করবে)
     ss_info = None
     ep_info = None
     
@@ -96,7 +116,7 @@ def get_file_info(update):
     return {
         "file_name": clean_name, "quality": quality, "size": size,
         "duration": duration, "format": raw_name.split(".")[-1].upper() if "." in raw_name else "MKV",
-        "ep": ep_info, "ss": ss_info, "lang": languages,
+        "ep": ep_info, "ss": ss_info, "lang": languages, "sub": subtitles,
         "year": year_match.group() if year_match else None
     }
 
@@ -104,7 +124,6 @@ def get_file_info(update):
 
 @app.on_chat_member_updated()
 async def channel_join_log(bot, update):
-    """বট কোনো চ্যানেলে অ্যাড হলে লগ চ্যানেলে ডিটেইলস পাঠানো"""
     if update.new_chat_member and update.new_chat_member.status in [enums.ChatMemberStatus.ADMINISTRATOR, enums.ChatMemberStatus.MEMBER]:
         me = await bot.get_me()
         if update.new_chat_member.user.id == me.id:
@@ -127,13 +146,11 @@ async def channel_join_log(bot, update):
 
 @app.on_message(filters.private & filters.command("start"))
 async def start_handler(bot, message):
-    """ইউজার সেভ এবং Force Subscribe চেক"""
     if not await db.is_user_exist(message.from_user.id):
         await db.add_user(message.from_user.id)
         if LOG_CHANNEL:
             await bot.send_message(LOG_CHANNEL, f"👤 **New User Joined!**\n**Name:** {message.from_user.mention}\n**ID:** `{message.from_user.id}`")
     
-    # Force Subscribe চেক
     if not await is_subscribed(bot, message):
         buttons = [
             [InlineKeyboardButton("📢 Join Channel", url=f"https://t.me/{FORCE_SUB}")],
@@ -144,7 +161,6 @@ async def start_handler(bot, message):
             reply_markup=InlineKeyboardMarkup(buttons)
         )
 
-    # মেইন মেনু
     me = await bot.get_me()
     buttons = [
         [InlineKeyboardButton("➕ Add Me To Your Channel", url=f"https://t.me/{me.username}?startchannel=true")],
@@ -157,15 +173,12 @@ async def start_handler(bot, message):
 
 @app.on_message(filters.channel)
 async def channel_handler(bot, update):
-    """চ্যানেলের ক্যাপশন এডিট করা (লগ চ্যানেল বাদে)"""
-    # লগ চ্যানেলের কোনো ফাইল এডিট করবে না
     if LOG_CHANNEL and update.chat.id == LOG_CHANNEL:
         return
 
     info = get_file_info(update)
     if not info: return
 
-    # ডায়নামিক ক্যাপশন বিল্ডার (যা তথ্য পাওয়া যাবে না সেই লাইনটি আসবে না)
     caption = f"📁 **File Name:** `{info['file_name']}`\n\n"
     caption += f"📊 **Quality:** {info['quality']}\n"
     caption += f"⚙️ **Size:** {info['size']}\n"
@@ -176,8 +189,8 @@ async def channel_handler(bot, update):
     if info['lang']:
         caption += f"🌐 **Language:** {'-'.join(info['lang'])}\n"
         
-    if info['subs'] != "None":
-        caption += f"📝 **Subtitle:** `{info['subs']}`\n"
+    if info['sub']:
+        caption += f"📜 **Subtitle:** {'-'.join(info['sub'])}\n"
     
     if info['year']:
         caption += f"📅 **Year:** {info['year']}\n"
