@@ -82,7 +82,7 @@ def get_file_info(update):
     if not subtitles and ("SUB" in raw_name.upper() or "CC" in raw_name.upper()):
         subtitles.append("Available")
 
-    quality = "1080p" if "1080p" in raw_name else "720p" if "720p" in raw_name else "480p" if "480p" in raw_name else "HD"
+    quality = "4K" if "2160P" in raw_name.upper() else "2K" if "1440P" in raw_name.upper() else "1080p" if "1080P" in raw_name.upper() else "900p" if "900P" in raw_name.upper() else "720p" if "720P" in raw_name.upper() else "540p" if "540P" in raw_name.upper() else "480p" if "480P" in raw_name.upper() else "360p" if "360P" in raw_name.upper() else "HD"
     
     # ফাইল সাইজ কনভার্টার (MB থেকে GB যদি ১০০০ MB এর বেশি হয়)
     size_mb = obj.file_size / (1024 * 1024)
