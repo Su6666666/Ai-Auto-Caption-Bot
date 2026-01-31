@@ -84,13 +84,12 @@ def get_file_info(update):
 
     quality = "4K" if "2160P" in raw_name.upper() else "2K" if "1440P" in raw_name.upper() else "1080p" if "1080P" in raw_name.upper() else "900p" if "900P" in raw_name.upper() else "720p" if "720P" in raw_name.upper() else "540p" if "540P" in raw_name.upper() else "480p" if "480P" in raw_name.upper() else "360p" if "360P" in raw_name.upper() else "HD"
     
-                # টেলিগ্রাম অ্যাপের স্ট্যান্ডার্ড সাইজ ফিক্সড কোড (এটিই ব্যবহার করুন)
-    size_mb = obj.file_size / (1024 * 1024)
-    if size_mb >= 1024:
-        # GB এর ক্ষেত্রে ১০০০ এর হিসাব নেবে যাতে টেলিগ্রামের ২.১০ জিবি-র সাথে হুবহু মিলে যায়
-        size = f"{round((obj.file_size / (1000 * 1000 * 1000)), 2)} GB"
+                    # টেলিগ্রাম অ্যাপের ২.১০ জিবি-র সাথে হুবহু মেলানোর কোড
+    size_gb = obj.file_size / (1000 * 1000 * 1000)
+    if size_gb >= 1.0:
+        size = f"{round(size_gb, 2)} GB"
     else:
-        # MB এর ক্ষেত্রে ১০২৪ এর হিসাব রাখবে
+        size_mb = obj.file_size / (1000 * 1000)
         size = f"{round(size_mb, 2)} MB"
         
     year_match = re.search(r'(19|20)\d{2}', raw_name)
