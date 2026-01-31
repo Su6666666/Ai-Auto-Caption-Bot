@@ -84,14 +84,10 @@ def get_file_info(update):
 
     quality = "4K" if "2160P" in raw_name.upper() else "2K" if "1440P" in raw_name.upper() else "1080p" if "1080P" in raw_name.upper() else "900p" if "900P" in raw_name.upper() else "720p" if "720P" in raw_name.upper() else "540p" if "540P" in raw_name.upper() else "480p" if "480P" in raw_name.upper() else "360p" if "360P" in raw_name.upper() else "HD"
     
-        # টেলিগ্রাম অ্যাপের সাথে হুবহু সাইজ মেলানোর জন্য ফিক্সড কোড
-    size_bytes = obj.file_size
-    size_kb = size_bytes / 1024
-    size_mb = size_kb / 1024
-    size_gb = size_mb / 1024
-
-    if size_gb >= 1.0:
-        size = f"{round(size_gb, 2)} GB"
+            # টেলিগ্রাম অ্যাপের সাথে হুবহু সাইজ মেলানোর ফিক্সড কোড
+    size_mb = obj.file_size / (1000 * 1000)
+    if size_mb >= 1000:
+        size = f"{round(size_mb / 1000, 2)} GB"
     else:
         size = f"{round(size_mb, 2)} MB"
         
