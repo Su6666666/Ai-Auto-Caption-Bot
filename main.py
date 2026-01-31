@@ -85,9 +85,9 @@ def get_file_info(update):
     quality = "4K" if "2160P" in raw_name.upper() else "2K" if "1440P" in raw_name.upper() else "1080p" if "1080P" in raw_name.upper() else "900p" if "900P" in raw_name.upper() else "720p" if "720P" in raw_name.upper() else "540p" if "540P" in raw_name.upper() else "480p" if "480P" in raw_name.upper() else "360p" if "360P" in raw_name.upper() else "HD"
     
     # ফাইল সাইজ কনভার্টার (MB থেকে GB যদি ১০০০ MB এর বেশি হয়)
-    size_mb = obj.file_size / (1000 * 1000)
-    if size_mb >= 1000:
-        size = f"{round(size_mb / 1000, 2)} GB"
+    size_mb = obj.file_size / (1024 * 1024)
+    if size_mb >= 1024:
+        size = f"{round(size_mb / 1024, 2)} GB"
     else:
         size = f"{round(size_mb, 2)} MB"
         
