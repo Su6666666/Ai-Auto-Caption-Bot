@@ -86,7 +86,7 @@ def get_file_info(update):
     
     # ফাইল সাইজ কনভার্টার (MB থেকে GB যদি ১০০০ MB এর বেশি হয়)
     size_mb = obj.file_size / (1024 * 1024)
-    if size_mb >= 1000:
+    if size_mb >= 1024:
         size = f"{round(size_mb / 1024, 2)} GB"
     else:
         size = f"{round(size_mb, 2)} MB"
